@@ -1,15 +1,15 @@
 {
     "version": "1.7.9",
-    "name": "@mkellsy/leap-client",
+    "name": "@vldmit/leap-client",
     "displayName": "Lutron LEAP Client",
-    "description": "Publishes device states using the Lutron LEAP protocol",
-    "author": "Michael Kellsy",
+    "description": "Lutron LEAP protocol client (fork of @mkellsy/leap-client with Pico/button reliability fixes)",
+    "author": "Vlad Dmitriev (fork of @mkellsy/leap-client by Michael Kellsy)",
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/mkellsy/leap-client.git"
+        "url": "git+https://github.com/vldmit/leap-client.git"
     },
-    "homepage": "https://github.com/mkellsy/leap-client",
+    "homepage": "https://github.com/vldmit/leap-client",
     "main": "lib/index.js",
     "files": [
         "/lib",
@@ -74,5 +74,12 @@
         "typedoc": "^0.26.10",
         "typedoc-plugin-markdown": "^4.2.9",
         "typescript": "^5.3.3"
+    },
+    "bugs": {
+        "url": "https://github.com/vldmit/leap-client/issues"
+    },
+    "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org/"
     }
 }
