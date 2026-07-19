@@ -144,6 +144,22 @@ export class ProcessorController
     }
 
     /**
+     * True when a cache entry looks like a real LEAP payload (object/array),
+     * not a poisoned error string such as "Request timeout".
+     */
+    private isValidCacheEntry(value: unknown): boolean {
+        return value != null && typeof value === "object";
+    }
+
+    /**
+     * Drops a bad cache entry so the next read hits the processor.
+     */
+    private dropCacheKey(key: string): void {
+        this.cache.removeKey(key);
+        this.cache.save(true);
+    }
+
+    /**
      * Pings the processor, useful for keeping the connection alive.
      *
      * @returns A ping response.
@@ -350,11 +366,24 @@ export class ProcessorController
         return new Promise((resolve, reject) => {
             const cached = this.cache.getKey(address.href);
 
-            if (cached != null) return resolve(cached);
+            if (this.isValidCacheEntry(cached) && typeof (cached as DeviceAddress).DeviceType === "string") {
+                return resolve(cached as DeviceAddress);
+            }
+
+            if (cached != null) {
+                this.logger.warn(
+                    `dropping invalid cache for ${address.href}: ${typeof cached === "string" ? cached : typeof cached}`,
+                );
+                this.dropCacheKey(address.href);
+            }
 
             this.connection
                 .read<DeviceAddress>(address.href)
                 .then((response) => {
+                    if (!this.isValidCacheEntry(response) || typeof response.DeviceType !== "string") {
+                        return reject(new Error(`invalid device payload for ${address.href}`));
+                    }
+
                     this.cache.setKey(address.href, response);
                     this.cache.save(true);
 
@@ -373,14 +402,28 @@ export class ProcessorController
      */
     public buttons(address: Address): Promise<ButtonGroupExpanded[]> {
         return new Promise((resolve, reject) => {
-            const cached = this.cache.getKey(`${address.href}/buttongroup/expanded`);
+            const key = `${address.href}/buttongroup/expanded`;
+            const cached = this.cache.getKey(key);
 
-            if (cached != null) return resolve(cached);
+            if (this.isValidCacheEntry(cached) && Array.isArray(cached)) {
+                return resolve(cached as ButtonGroupExpanded[]);
+            }
+
+            if (cached != null) {
+                this.logger.warn(
+                    `dropping invalid cache for ${key}: ${typeof cached === "string" ? cached : typeof cached}`,
+                );
+                this.dropCacheKey(key);
+            }
 
             this.connection
                 .read<ButtonGroupExpanded[]>(`${address.href}/buttongroup/expanded`)
                 .then((response) => {
-                    this.cache.setKey(`${address.href}/buttongroup/expanded`, response);
+                    if (!Array.isArray(response)) {
+                        return reject(new Error(`invalid button group payload for ${address.href}`));
+                    }
+
+                    this.cache.setKey(key, response);
                     this.cache.save(true);
 
                     resolve(response);

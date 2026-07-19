@@ -35,10 +35,14 @@ export class KeypadController extends Common<KeypadState> implements Keypad {
         });
 
         if (device.DeviceType === "SunnataKeypad" || device.DeviceType === "SunnataHybridKeypad") {
-            this.processor
+            this.ready = this.processor
                 .buttons(this.address)
-                .then((groups) => {
-                    for (let i = 0; i < groups?.length; i++) {
+                .then(async (groups) => {
+                    if (!Array.isArray(groups)) {
+                        throw new Error(`button groups not an array for ${device.DeviceType} ${this.address.href}`);
+                    }
+
+                    for (let i = 0; i < groups.length; i++) {
                         for (let j = 0; j < groups[i].Buttons?.length; j++) {
                             const button = groups[i].Buttons[j];
                             const id = `LEAP-${this.processor.id}-BUTTON-${button.href.split("/")[2]}`;
@@ -52,8 +56,8 @@ export class KeypadController extends Common<KeypadState> implements Keypad {
 
                             this.buttons.push(definition);
 
-                            this.processor
-                                .subscribe<ButtonStatus>(
+                            try {
+                                await this.processor.subscribe<ButtonStatus>(
                                     { href: `${button.href}/status/event` },
                                     (status: ButtonStatus): void => {
                                         const action = status.ButtonEvent.EventType;
@@ -64,12 +68,23 @@ export class KeypadController extends Common<KeypadState> implements Keypad {
 
                                         setTimeout(() => this.emit("Action", this, definition, "Release"), 100);
                                     },
-                                )
-                                .catch((error: Error) => this.log.error(Colors.red(error.message)));
+                                );
+                            } catch (error) {
+                                this.log.error(
+                                    Colors.red(error instanceof Error ? error.message : String(error)),
+                                );
+                            }
                         }
                     }
+
+                    this.log.info(
+                        `keypad buttons ready count=${this.buttons.length} type=${device.DeviceType} href=${this.address.href}`,
+                    );
                 })
-                .catch((error: Error) => this.log.error(Colors.red(error.message)));
+                .catch((error: Error) => {
+                    this.log.error(Colors.red(error.message));
+                    throw error;
+                });
         }
     }
 

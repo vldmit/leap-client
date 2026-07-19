@@ -35,15 +35,25 @@ export class RemoteController extends Common<DeviceState> implements Remote {
     constructor(processor: Processor, area: AreaAddress, device: DeviceAddress) {
         super(DeviceType.Remote, processor, area, device, { state: "Unknown" });
 
-        this.processor
+        this.ready = this.processor
             .buttons(this.address)
-            .then((groups) => {
-                for (let i = 0; i < groups?.length; i++) {
+            .then(async (groups) => {
+                if (!Array.isArray(groups)) {
+                    throw new Error(`button groups not an array for ${device.DeviceType} ${this.address.href}`);
+                }
+
+                const map = ButtonMap.get(device.DeviceType);
+
+                if (map == null) {
+                    this.log.warn(`no ButtonMap for DeviceType=${device.DeviceType}; buttons will be unmapped`);
+                }
+
+                for (let i = 0; i < groups.length; i++) {
                     for (let j = 0; j < groups[i].Buttons?.length; j++) {
                         const button = groups[i].Buttons[j];
-                        const map = ButtonMap.get(device.DeviceType);
-                        const index = map!.get(button.ButtonNumber)![0] as number;
-                        const raiseLower = map!.get(button.ButtonNumber)![1] as boolean;
+                        const mapped = map?.get(button.ButtonNumber);
+                        const index = (mapped?.[0] as number | undefined) ?? button.ButtonNumber + 1;
+                        const raiseLower = (mapped?.[1] as boolean | undefined) ?? false;
 
                         const trigger = new TriggerController(this.processor, button, index, { raiseLower });
 
@@ -68,16 +78,27 @@ export class RemoteController extends Common<DeviceState> implements Remote {
                         this.triggers.set(button.href, trigger);
                         this.buttons.push(trigger.definition);
 
-                        this.processor
-                            .subscribe<ButtonStatus>(
+                        try {
+                            await this.processor.subscribe<ButtonStatus>(
                                 { href: `${button.href}/status/event` },
                                 (status: ButtonStatus): void => this.triggers.get(button.href)!.update(status),
-                            )
-                            .catch((error) => this.log.error(Colors.red(error.message)));
+                            );
+                        } catch (error) {
+                            this.log.error(
+                                Colors.red(error instanceof Error ? error.message : String(error)),
+                            );
+                        }
                     }
                 }
+
+                this.log.info(
+                    `remote buttons ready count=${this.buttons.length} type=${device.DeviceType} href=${this.address.href}`,
+                );
             })
-            .catch((error: Error) => this.log.error(Colors.red(error.message)));
+            .catch((error: Error) => {
+                this.log.error(Colors.red(error.message));
+                throw error;
+            });
     }
 
     /**

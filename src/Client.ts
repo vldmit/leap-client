@@ -218,9 +218,17 @@ export class Client extends EventEmitter<{
 
             processor
                 .controls(area)
-                .then((controls) => {
-                    for (const control of controls) {
-                        this.discoverPositions(processor, control).then((positions) => {
+                .then(async (controls) => {
+                    if (controls == null || controls.length === 0) {
+                        return resolve();
+                    }
+
+                    // Wait for every control station — previously resolved after the first,
+                    // which dropped later Picos in multi-station rooms.
+                    await Promise.all(
+                        controls.map(async (control) => {
+                            const positions = await this.discoverPositions(processor, control);
+
                             for (const position of positions) {
                                 const type = parseDeviceType(position.DeviceType);
 
@@ -238,10 +246,10 @@ export class Client extends EventEmitter<{
 
                                 processor.devices.set(address, device);
                             }
+                        }),
+                    );
 
-                            resolve();
-                        });
-                    }
+                    resolve();
                 })
                 .catch(() => resolve());
         });
@@ -261,9 +269,34 @@ export class Client extends EventEmitter<{
                 waits.push(processor.device(gangedDevice.Device));
             }
 
-            Promise.all(waits)
-                .then((positions) => {
-                    resolve(positions.filter((position) => isAddressable(position)));
+            // allSettled so one timed-out device does not drop the whole gang.
+            Promise.allSettled(waits)
+                .then((results) => {
+                    const positions: DeviceAddress[] = [];
+
+                    for (const result of results) {
+                        if (result.status === "rejected") {
+                            log.warn(
+                                `control station ${control.Name || control.href}: device fetch failed: ${
+                                    result.reason instanceof Error ? result.reason.message : String(result.reason)
+                                }`,
+                            );
+                            continue;
+                        }
+
+                        if (isAddressable(result.value)) {
+                            positions.push(result.value);
+                        } else {
+                            const value = result.value as DeviceAddress | null;
+                            log.info(
+                                `skipping non-addressable ${control.Name || "?"} ` +
+                                    `type=${value?.DeviceType || typeof value} ` +
+                                    `state=${value?.AddressedState || "?"} href=${value?.href || "?"}`,
+                            );
+                        }
+                    }
+
+                    resolve(positions);
                 })
                 .catch(() => resolve([]));
         });
@@ -392,8 +425,30 @@ export class Client extends EventEmitter<{
 
                         log.info(`processor ${host.id} discovering devices (${waits.length} wait tasks)`);
 
-                        Promise.all(waits).then(() => {
-                            const count = [...processor.devices.keys()].length;
+                        Promise.all(waits).then(async () => {
+                            const devices = [...processor.devices.values()];
+
+                            // Remotes/keypads load buttons asynchronously; wait so HomeKit
+                            // accessories are built with StatelessProgrammableSwitch services.
+                            await Promise.all(
+                                devices.map(async (device) => {
+                                    const ready = (device as Device & { ready?: Promise<void> }).ready;
+
+                                    if (ready != null) {
+                                        try {
+                                            await ready;
+                                        } catch (error) {
+                                            log.warn(
+                                                `device ${device.name} button init failed: ${
+                                                    error instanceof Error ? error.message : String(error)
+                                                }`,
+                                            );
+                                        }
+                                    }
+                                }),
+                            );
+
+                            const count = devices.length;
 
                             log.info(`processor ${host.id} discovery complete: ${count} devices; loading statuses`);
 
@@ -431,7 +486,7 @@ export class Client extends EventEmitter<{
                             });
 
                             log.info(`processor ${host.id} emitting Available with ${count} devices`);
-                            this.emit("Available", [...processor.devices.values()]);
+                            this.emit("Available", devices);
                         });
                     })
                     .catch((error) => this.onProcessorError(host, error));

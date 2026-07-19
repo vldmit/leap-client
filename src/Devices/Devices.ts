@@ -102,9 +102,14 @@ export function parseDeviceType(value: string): DeviceType {
             return DeviceType.Fan;
 
         case "Pico2Button":
+        case "Pico2ButtonRaiseLower":
         case "Pico3Button":
         case "Pico4Button":
         case "Pico3ButtonRaiseLower":
+        case "Pico4Button2Group":
+        case "Pico4ButtonScene":
+        case "Pico4ButtonZone":
+        case "PaddleSwitchPico":
             return DeviceType.Remote;
 
         case "SunnataDimmer":
@@ -134,15 +139,25 @@ export function parseDeviceType(value: string): DeviceType {
  * @private
  */
 export function isAddressable(device: DeviceAddress): boolean {
+    // Guard against poisoned cache entries (e.g. the string "Request timeout").
+    if (device == null || typeof device !== "object") {
+        return false;
+    }
+
     if (device.AddressedState !== "Addressed") {
         return false;
     }
 
     switch (device.DeviceType) {
         case "Pico2Button":
+        case "Pico2ButtonRaiseLower":
         case "Pico3Button":
         case "Pico4Button":
         case "Pico3ButtonRaiseLower":
+        case "Pico4Button2Group":
+        case "Pico4ButtonScene":
+        case "Pico4ButtonZone":
+        case "PaddleSwitchPico":
             return true;
 
         case "SunnataKeypad":

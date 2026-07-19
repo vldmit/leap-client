@@ -205,15 +205,31 @@ export class Connection extends Parser<{
             this.sendRequest(tag, "ReadRequest", url)
                 .then((response) => {
                     const body = response.Body as T;
+                    const bodyType = response.Header?.MessageBodyType;
 
                     if (body == null) {
                         log.info(`read ${url} -> empty body status=${response.Header?.StatusCode || "?"}`);
                         return reject(new Error(`${url} no body`));
                     }
 
-                    if (response.Body instanceof ExceptionDetail) {
-                        log.info(`read ${url} -> exception: ${response.Body.Message}`);
-                        return reject(new Error(response.Body.Message));
+                    // ExceptionDetail is unwrapped by Response.parse() to the Message string,
+                    // so instanceof ExceptionDetail only works for manually constructed bodies.
+                    if (bodyType === "ExceptionDetail" || response.Body instanceof ExceptionDetail) {
+                        const message =
+                            response.Body instanceof ExceptionDetail
+                                ? response.Body.Message
+                                : typeof response.Body === "string"
+                                  ? response.Body
+                                  : "Unknown exception";
+
+                        log.info(`read ${url} -> exception: ${message}`);
+                        return reject(new Error(message));
+                    }
+
+                    // Defensive: never treat a bare string as a LEAP record (poisoned-cache path).
+                    if (typeof body === "string") {
+                        log.info(`read ${url} -> unexpected string body: ${body}`);
+                        return reject(new Error(body));
                     }
 
                     const kind = Array.isArray(body)
@@ -448,16 +464,14 @@ export class Connection extends Parser<{
                         reject,
                         timeout: setTimeout(
                             /* istanbul ignore next */
-                            () =>
-                                resolve(
-                                    Response.parse(
-                                        JSON.stringify({
-                                            Header: { MessageBodyType: "ExceptionDetail" },
-                                            Body: { Message: "Request timeout" },
-                                        }),
-                                    ),
-                                ),
-                            5_000,
+                            () => {
+                                // Reject on timeout — never resolve with a fake ExceptionDetail body.
+                                // Response.parse() unwraps { Message: "..." } to a bare string, which
+                                // used to be treated as a successful read and permanently cached.
+                                this.requests.delete(tag!);
+                                reject(new Error("Request timeout"));
+                            },
+                            15_000,
                         ),
                     });
                 })

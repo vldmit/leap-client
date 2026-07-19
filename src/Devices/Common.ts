@@ -20,6 +20,12 @@ export abstract class Common<STATE extends DeviceState> extends EventEmitter<{
     protected initialized: boolean = false;
     protected fields: Map<string, Capability> = new Map();
 
+    /**
+     * Resolves when async device setup (e.g. button enumeration) is finished.
+     * Defaults to already-resolved; remotes/keypads override.
+     */
+    public ready: Promise<void> = Promise.resolve();
+
     private logger: ILogger;
 
     private deviceName: string;
