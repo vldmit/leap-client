@@ -70,9 +70,7 @@ export class KeypadController extends Common<KeypadState> implements Keypad {
                                     },
                                 );
                             } catch (error) {
-                                this.log.error(
-                                    Colors.red(error instanceof Error ? error.message : String(error)),
-                                );
+                                this.log.error(Colors.red(error instanceof Error ? error.message : String(error)));
                             }
                         }
                     }

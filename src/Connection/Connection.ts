@@ -122,7 +122,9 @@ export class Connection extends Parser<{
             socket
                 .connect()
                 .then((protocol) => {
-                    log.info(`socket up ${this.host}:${port} protocol=${protocol}; physicalAccess secure=${this.secure}`);
+                    log.info(
+                        `socket up ${this.host}:${port} protocol=${protocol}; physicalAccess secure=${this.secure}`,
+                    );
 
                     this.physicalAccess(this.secure)
                         .then(() => {
@@ -226,16 +228,12 @@ export class Connection extends Parser<{
                         return reject(new Error(message));
                     }
 
-                    // Defensive: never treat a bare string as a LEAP record (poisoned-cache path).
-                    if (typeof body === "string") {
-                        log.info(`read ${url} -> unexpected string body: ${body}`);
-                        return reject(new Error(body));
-                    }
-
                     const kind = Array.isArray(body)
                         ? `array(${(body as unknown[]).length})`
                         : typeof body === "object"
-                          ? `object(${Object.keys(body as object).slice(0, 12).join(",")})`
+                          ? `object(${Object.keys(body as object)
+                                .slice(0, 12)
+                                .join(",")})`
                           : typeof body;
 
                     log.debug(`read ${url} -> ok ${kind}`);

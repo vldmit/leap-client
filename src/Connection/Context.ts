@@ -123,8 +123,9 @@ export class Context {
 
         if (fs.existsSync(filePath)) {
             const bytes = fs.readFileSync(filePath);
+            const size = bytes != null && typeof (bytes as Buffer).length === "number" ? (bytes as Buffer).length : 0;
 
-            log.info(`opened ${filePath} (${bytes.length} bytes)`);
+            log.info(`opened ${filePath} (${size} bytes)`);
 
             return BSON.deserialize(bytes) as T;
         }

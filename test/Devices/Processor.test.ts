@@ -535,38 +535,56 @@ describe("Processor", () => {
     });
 
     describe("device()", () => {
+        const testDevice = { href: "/device/1", DeviceType: "Pico3ButtonRaiseLower", Name: "TEST_DEVICE" };
+
         it("should return a device response from the underlying connection", (done) => {
             cache.getKey.returns(undefined);
 
             processor
-                .device({ href: "/AREA" })
+                .device({ href: "/device/1" })
                 .then((results) => {
-                    expect(results).to.equal("TEST_DEVICE");
+                    expect(results).to.deep.equal(testDevice);
 
                     done();
                 })
                 .catch((error) => console.log(error));
 
-            reader.resolve("TEST_DEVICE");
+            reader.resolve(testDevice);
         });
 
         it("should return device from cache if exists", (done) => {
-            cache.getKey.returns("TEST_DEVICE");
+            cache.getKey.returns(testDevice);
 
             processor
-                .device({ href: "/AREA" })
+                .device({ href: "/device/1" })
                 .then((results) => {
-                    expect(results).to.equal("TEST_DEVICE");
+                    expect(results).to.deep.equal(testDevice);
 
                     done();
                 })
                 .catch((error) => console.log(error));
+        });
+
+        it("should drop poisoned cache strings and re-fetch", (done) => {
+            cache.getKey.returns("Request timeout");
+
+            processor
+                .device({ href: "/device/1" })
+                .then((results) => {
+                    expect(cache.removeKey).to.be.calledWith("/device/1");
+                    expect(results).to.deep.equal(testDevice);
+
+                    done();
+                })
+                .catch((error) => console.log(error));
+
+            reader.resolve(testDevice);
         });
 
         it("should log an error if the read request fails", (done) => {
             cache.getKey.returns(undefined);
 
-            processor.device({ href: "/AREA" }).catch(() => {
+            processor.device({ href: "/device/1" }).catch(() => {
                 done();
             });
 
@@ -575,38 +593,56 @@ describe("Processor", () => {
     });
 
     describe("buttons()", () => {
+        const testButtons = [{ href: "/buttongroup/1", Buttons: [] }];
+
         it("should return a buttons response from the underlying connection", (done) => {
             cache.getKey.returns(undefined);
 
             processor
-                .buttons({ href: "/AREA" })
+                .buttons({ href: "/device/1" })
                 .then((results) => {
-                    expect(results).to.equal("TEST_BUTTONS");
+                    expect(results).to.deep.equal(testButtons);
 
                     done();
                 })
                 .catch((error) => console.log(error));
 
-            reader.resolve("TEST_BUTTONS");
+            reader.resolve(testButtons);
         });
 
         it("should return buttons from cache if exists", (done) => {
-            cache.getKey.returns("TEST_BUTTONS");
+            cache.getKey.returns(testButtons);
 
             processor
-                .buttons({ href: "/AREA" })
+                .buttons({ href: "/device/1" })
                 .then((results) => {
-                    expect(results).to.equal("TEST_BUTTONS");
+                    expect(results).to.deep.equal(testButtons);
 
                     done();
                 })
                 .catch((error) => console.log(error));
+        });
+
+        it("should drop poisoned cache strings and re-fetch", (done) => {
+            cache.getKey.returns("Request timeout");
+
+            processor
+                .buttons({ href: "/device/1" })
+                .then((results) => {
+                    expect(cache.removeKey).to.be.calledWith("/device/1/buttongroup/expanded");
+                    expect(results).to.deep.equal(testButtons);
+
+                    done();
+                })
+                .catch((error) => console.log(error));
+
+            reader.resolve(testButtons);
         });
 
         it("should log an error if the read request fails", (done) => {
             cache.getKey.returns(undefined);
 
-            processor.buttons({ href: "/AREA" }).catch(() => {
+            processor.buttons({ href: "/device/1" }).catch(() => {
                 done();
             });
 
@@ -629,23 +665,26 @@ describe("Processor", () => {
         });
 
         it("should call ping after the heartbeat duration", (done) => {
+            // Resolve the first ping so startHeartbeat schedules the next interval via finally().
+            connect.resolve();
+            reader.resolve();
+
             processor
                 .connect()
                 .then(() => {
                     expect(connection.read.getCall(0).args[0]).to.equal("/server/1/status/ping");
 
-                    reader = sinon.promise();
                     clock.tick(20_000);
-                    reader.resolve();
 
+                    expect(connection.read.callCount).to.be.at.least(2);
                     expect(connection.read.getCall(1).args[0]).to.equal("/server/1/status/ping");
 
                     done();
                 })
-                .catch((error) => console.log(error));
-
-            connect.resolve();
-            reader.resolve();
+                .catch((error) => {
+                    console.log(error);
+                    done(error);
+                });
         });
     });
 });

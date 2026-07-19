@@ -1,7 +1,12 @@
 module.exports = {
     extension: ".ts",
     include: ["src/**/*"],
-    exclude: ["coverage", "**/*.d.ts"],
+    exclude: [
+        "coverage",
+        "**/*.d.ts",
+        // One-shot diagnostics for live processors; not unit-tested.
+        "src/Connection/MetadataProbe.ts",
+    ],
     require: ["ts-node/register", "source-map-support/register"],
     instrument: true,
     all: false,

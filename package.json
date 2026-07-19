@@ -21,7 +21,7 @@
         "format": "prettier --write .",
         "test": "nyc mocha test/*.test.ts test/**/*.test.ts",
         "generate": "node ./generate",
-        "prepublishOnly": "npm run build"
+        "prepublishOnly": "node ./build"
     },
     "dependencies": {
         "@mkellsy/event-emitter": "^1.5.3",
@@ -81,5 +81,6 @@
     "publishConfig": {
         "access": "public",
         "registry": "https://registry.npmjs.org/"
-    }
+    },
+    "prepublishOnly": "node ./build"
 }

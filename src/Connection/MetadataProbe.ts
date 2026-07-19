@@ -1,3 +1,5 @@
+import { Device } from "@mkellsy/hap-device";
+
 import { AreaAddress } from "../Response/AreaAddress";
 import { Processor } from "../Devices/Processor/Processor";
 
@@ -115,9 +117,7 @@ export async function probeProcessorMetadata(processor: Processor, areas: AreaAd
                 );
             }
         } catch (error) {
-            log.warn(
-                `ZONE list failed for ${area.href}: ${error instanceof Error ? error.message : String(error)}`,
-            );
+            log.warn(`ZONE list failed for ${area.href}: ${error instanceof Error ? error.message : String(error)}`);
         }
 
         try {
@@ -134,9 +134,7 @@ export async function probeProcessorMetadata(processor: Processor, areas: AreaAd
                 );
             }
         } catch (error) {
-            log.warn(
-                `STATION list failed for ${area.href}: ${error instanceof Error ? error.message : String(error)}`,
-            );
+            log.warn(`STATION list failed for ${area.href}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
@@ -156,19 +154,15 @@ export async function probeProcessorMetadata(processor: Processor, areas: AreaAd
                 log.info(`PROBE sample url=${url} ${JSON.stringify(body).slice(0, 1200)}`);
             }
         } catch (error) {
-            log.info(
-                `PROBE fail url=${url}: ${error instanceof Error ? error.message : String(error)}`,
-            );
+            log.info(`PROBE fail url=${url}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
     // Devices currently discovered by the client with room metadata.
     for (const device of processor.devices.values()) {
         const area = device.area as AreaAddress | undefined;
-        const path =
-            typeof (device as { areaPath?: string }).areaPath === "string"
-                ? (device as { areaPath: string }).areaPath
-                : areaPath(areas, area?.href);
+        const withPath = device as Device & { areaPath?: string };
+        const path = typeof withPath.areaPath === "string" ? withPath.areaPath : areaPath(areas, area?.href);
 
         log.info(
             `DEVICE type=${device.type} name=${JSON.stringify(device.name)} room=${JSON.stringify(device.room)} ` +

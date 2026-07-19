@@ -43,6 +43,31 @@ describe("Devices", () => {
                 area: { name: "TEST_AREA", href: "/AREA/ZONE" },
                 constructor: RemoteController,
             },
+            {
+                value: "Pico2ButtonRaiseLower",
+                area: { name: "TEST_AREA", href: "/AREA/ZONE" },
+                constructor: RemoteController,
+            },
+            {
+                value: "Pico4Button2Group",
+                area: { name: "TEST_AREA", href: "/AREA/ZONE" },
+                constructor: RemoteController,
+            },
+            {
+                value: "Pico4ButtonScene",
+                area: { name: "TEST_AREA", href: "/AREA/ZONE" },
+                constructor: RemoteController,
+            },
+            {
+                value: "Pico4ButtonZone",
+                area: { name: "TEST_AREA", href: "/AREA/ZONE" },
+                constructor: RemoteController,
+            },
+            {
+                value: "PaddleSwitchPico",
+                area: { name: "TEST_AREA", href: "/AREA/ZONE" },
+                constructor: RemoteController,
+            },
             { value: "SunnataDimmer", area: { name: "TEST_AREA", href: "/AREA/ZONE" }, constructor: KeypadController },
             { value: "SunnataSwitch", area: { name: "TEST_AREA", href: "/AREA/ZONE" }, constructor: KeypadController },
             { value: "SunnataKeypad", area: { name: "TEST_AREA", href: "/AREA/ZONE" }, constructor: KeypadController },
@@ -99,9 +124,14 @@ describe("Devices", () => {
             { value: "WhiteTune", type: DeviceType.Strip },
             { value: "FanSpeed", type: DeviceType.Fan },
             { value: "Pico2Button", type: DeviceType.Remote },
+            { value: "Pico2ButtonRaiseLower", type: DeviceType.Remote },
             { value: "Pico3Button", type: DeviceType.Remote },
             { value: "Pico4Button", type: DeviceType.Remote },
             { value: "Pico3ButtonRaiseLower", type: DeviceType.Remote },
+            { value: "Pico4Button2Group", type: DeviceType.Remote },
+            { value: "Pico4ButtonScene", type: DeviceType.Remote },
+            { value: "Pico4ButtonZone", type: DeviceType.Remote },
+            { value: "PaddleSwitchPico", type: DeviceType.Remote },
             { value: "SunnataDimmer", type: DeviceType.Keypad },
             { value: "SunnataSwitch", type: DeviceType.Keypad },
             { value: "SunnataKeypad", type: DeviceType.Keypad },
@@ -122,9 +152,14 @@ describe("Devices", () => {
         const TEST_CASES = [
             { AddressedState: "Unaddressed", DeviceType: "Unknown", expected: false },
             { AddressedState: "Addressed", DeviceType: "Pico2Button", expected: true },
+            { AddressedState: "Addressed", DeviceType: "Pico2ButtonRaiseLower", expected: true },
             { AddressedState: "Addressed", DeviceType: "Pico3Button", expected: true },
             { AddressedState: "Addressed", DeviceType: "Pico4Button", expected: true },
             { AddressedState: "Addressed", DeviceType: "Pico3ButtonRaiseLower", expected: true },
+            { AddressedState: "Addressed", DeviceType: "Pico4Button2Group", expected: true },
+            { AddressedState: "Addressed", DeviceType: "Pico4ButtonScene", expected: true },
+            { AddressedState: "Addressed", DeviceType: "Pico4ButtonZone", expected: true },
+            { AddressedState: "Addressed", DeviceType: "PaddleSwitchPico", expected: true },
             { AddressedState: "Addressed", DeviceType: "SunnataKeypad", expected: true },
             { AddressedState: "Addressed", DeviceType: "SunnataHybridKeypad", expected: true },
             { AddressedState: "Addressed", DeviceType: "RPSCeilingMountedOccupancySensor", expected: true },
@@ -135,6 +170,11 @@ describe("Devices", () => {
             it(`should define "${TEST_CASE.DeviceType}" as ${TEST_CASE.expected ? "addressable" : "unaddressable"}`, () => {
                 expect(isAddressable({ ...TEST_CASE } as any)).to.equal(TEST_CASE.expected);
             });
+        });
+
+        it("should reject non-object (poisoned cache) values", () => {
+            expect(isAddressable(null as any)).to.equal(false);
+            expect(isAddressable("Request timeout" as any)).to.equal(false);
         });
     });
 });

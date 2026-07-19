@@ -84,9 +84,7 @@ export class RemoteController extends Common<DeviceState> implements Remote {
                                 (status: ButtonStatus): void => this.triggers.get(button.href)!.update(status),
                             );
                         } catch (error) {
-                            this.log.error(
-                                Colors.red(error instanceof Error ? error.message : String(error)),
-                            );
+                            this.log.error(Colors.red(error instanceof Error ? error.message : String(error)));
                         }
                     }
                 }

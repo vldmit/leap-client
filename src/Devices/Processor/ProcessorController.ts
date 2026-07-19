@@ -115,9 +115,7 @@ export class ProcessorController
                     resolve();
                 })
                 .catch((error) => {
-                    this.logger.error(
-                        `connect() failed: ${error instanceof Error ? error.message : String(error)}`,
-                    );
+                    this.logger.error(`connect() failed: ${error instanceof Error ? error.message : String(error)}`);
                     reject(error);
                 });
         });
@@ -507,9 +505,7 @@ export class ProcessorController
                 this.logger.debug("heartbeat ping ok");
             })
             .catch((error) => {
-                this.logger.warn(
-                    `heartbeat ping failed: ${error instanceof Error ? error.message : String(error)}`,
-                );
+                this.logger.warn(`heartbeat ping failed: ${error instanceof Error ? error.message : String(error)}`);
             })
             .finally(() => {
                 this.heartbeatTimeout = setTimeout(() => this.startHeartbeat(), HEARTBEAT_DURATION);

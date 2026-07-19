@@ -69,9 +69,9 @@ export class Client extends EventEmitter<{
         this.discovery = new Discovery();
         this.refresh = refresh === true;
 
-        log.info(
-            `Client start refresh=${this.refresh} paired=[${this.context.processors.join(", ") || "none"}]`,
-        );
+        const paired = this.context?.processors ?? [];
+
+        log.info(`Client start refresh=${this.refresh} paired=[${paired.join(", ") || "none"}]`);
 
         this.discovery.on("Discovered", this.onDiscovered).search();
     }
@@ -452,31 +452,34 @@ export class Client extends EventEmitter<{
 
                             log.info(`processor ${host.id} discovery complete: ${count} devices; loading statuses`);
 
-                            processor.statuses(type).then((statuses) => {
-                                for (const status of statuses) {
-                                    const zone = processor.devices.get(((status as ZoneStatus).Zone || {}).href || "");
+                            processor
+                                .statuses(type)
+                                .then((statuses) => {
+                                    for (const status of statuses) {
+                                        const zone = processor.devices.get(
+                                            ((status as ZoneStatus).Zone || {}).href || "",
+                                        );
 
-                                    const occupancy = processor.devices.get(
-                                        `/occupancy/${(status.href || "").split("/")[2]}`,
-                                    );
+                                        const occupancy = processor.devices.get(
+                                            `/occupancy/${(status.href || "").split("/")[2]}`,
+                                        );
 
-                                    if (zone != null) zone.update(status as ZoneStatus);
+                                        if (zone != null) zone.update(status as ZoneStatus);
 
-                                    if (occupancy != null && (status as AreaStatus).OccupancyStatus != null) {
-                                        occupancy.update(status as AreaStatus);
+                                        if (occupancy != null && (status as AreaStatus).OccupancyStatus != null) {
+                                            occupancy.update(status as AreaStatus);
+                                        }
                                     }
-                                }
 
-                                log.info(`processor ${host.id} applied ${statuses.length} status record(s)`);
-                            }).catch((error) => {
-                                log.error(
-                                    `processor ${host.id} statuses failed: ${error instanceof Error ? error.message : String(error)}`,
-                                );
-                            });
+                                    log.info(`processor ${host.id} applied ${statuses.length} status record(s)`);
+                                })
+                                .catch((error) => {
+                                    log.error(
+                                        `processor ${host.id} statuses failed: ${error instanceof Error ? error.message : String(error)}`,
+                                    );
+                                });
 
-                            processor.log.info(
-                                `discovered ${Colors.green(count.toString())} devices`,
-                            );
+                            processor.log.info(`discovered ${Colors.green(count.toString())} devices`);
 
                             // One-shot protocol inventory: area/group hierarchy + extra LEAP URLs.
                             probeProcessorMetadata(processor, areas).catch((error) => {
@@ -514,12 +517,8 @@ export class Client extends EventEmitter<{
     private onProcessorError = (host: ProcessorAddress, error: Error): void => {
         const message = error?.message != null ? error.message : String(error);
 
-        if (
-            message.match(/ENOTFOUND|ENETUNREACH|EHOSTUNREACH|ECONNRESET|EPIPE|ECONNREFUSED|ETIMEDOUT/g) != null
-        ) {
-            log.warn(
-                `processor ${host.id} network error: ${message}; retry in ${RETRY_BACKOFF_DURATION}ms`,
-            );
+        if (message.match(/ENOTFOUND|ENETUNREACH|EHOSTUNREACH|ECONNRESET|EPIPE|ECONNREFUSED|ETIMEDOUT/g) != null) {
+            log.warn(`processor ${host.id} network error: ${message}; retry in ${RETRY_BACKOFF_DURATION}ms`);
             setTimeout(() => this.onDiscovered(host), RETRY_BACKOFF_DURATION);
 
             return;
