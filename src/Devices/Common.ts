@@ -25,6 +25,7 @@ export abstract class Common<STATE extends DeviceState> extends EventEmitter<{
     private deviceName: string;
     private deviceAddress: string;
     private deviceArea: Area;
+    private deviceAreaPath: string;
     private deviceType: DeviceType;
 
     /**
@@ -42,14 +43,14 @@ export abstract class Common<STATE extends DeviceState> extends EventEmitter<{
      *
      * @param type The device type.
      * @param processor The current processor for this device.
-     * @param area The area the device belongs to.
+     * @param area The area the device belongs to. May include Path (full hierarchy).
      * @param definition Device address definition.
      * @param state The device's initial state.
      */
     constructor(
         type: DeviceType,
         processor: Processor,
-        area: Area,
+        area: Area & { Path?: string },
         definition: { href: string; Name: string },
         state: STATE,
     ) {
@@ -59,6 +60,7 @@ export abstract class Common<STATE extends DeviceState> extends EventEmitter<{
         this.deviceAddress = definition.href;
         this.deviceName = definition.Name;
         this.deviceArea = area;
+        this.deviceAreaPath = area.Path || area.Name || "";
         this.deviceType = type;
 
         this.logger = getLogger(`Device ${Colors.dim(this.id)}`);
@@ -99,6 +101,14 @@ export abstract class Common<STATE extends DeviceState> extends EventEmitter<{
      */
     public get room(): string {
         return this.area.Name;
+    }
+
+    /**
+     * Full area hierarchy path (e.g. "House / Upper Floor / Kitchen").
+     * Falls back to the leaf room name when path was not provided.
+     */
+    public get areaPath(): string {
+        return this.deviceAreaPath || this.room;
     }
 
     /**

@@ -104,14 +104,22 @@ export class ProcessorController
      */
     public connect(): Promise<void> {
         return new Promise((resolve, reject) => {
+            this.logger.info("connect() starting");
+
             this.connection
                 .connect()
                 .then(() => {
+                    this.logger.info("connect() socket/session ready; starting heartbeat");
                     this.startHeartbeat();
 
                     resolve();
                 })
-                .catch((error) => reject(error));
+                .catch((error) => {
+                    this.logger.error(
+                        `connect() failed: ${error instanceof Error ? error.message : String(error)}`,
+                    );
+                    reject(error);
+                });
         });
     }
 
@@ -441,6 +449,7 @@ export class ProcessorController
      * Listener for when there is an error in the connection.
      */
     private onError = (error: Error): void => {
+        this.logger.error(`connection error: ${error?.message != null ? error.message : String(error)}`);
         this.emit("Error", error);
     };
 
@@ -450,9 +459,18 @@ export class ProcessorController
     private startHeartbeat(): void {
         this.stopHeartbeat();
 
-        this.ping().finally(() => {
-            this.heartbeatTimeout = setTimeout(() => this.startHeartbeat(), HEARTBEAT_DURATION);
-        });
+        this.ping()
+            .then(() => {
+                this.logger.debug("heartbeat ping ok");
+            })
+            .catch((error) => {
+                this.logger.warn(
+                    `heartbeat ping failed: ${error instanceof Error ? error.message : String(error)}`,
+                );
+            })
+            .finally(() => {
+                this.heartbeatTimeout = setTimeout(() => this.startHeartbeat(), HEARTBEAT_DURATION);
+            });
     }
 
     /*

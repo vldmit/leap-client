@@ -3,9 +3,12 @@ import path from "path";
 import os from "os";
 
 import { BSON } from "bson";
+import { get as getLogger } from "js-logger";
 
 import { Certificate } from "../Response/Certificate";
 import { ProcessorAddress } from "../Response/ProcessorAddress";
+
+const log = getLogger("Context");
 
 /**
  * Defines an authentication context and state for a processor.
@@ -20,14 +23,25 @@ export class Context {
      * only happens once.
      */
     constructor() {
-        const context = this.open<Record<string, Certificate>>("pairing") || {};
-        const keys = Object.keys(context);
+        try {
+            const context = this.open<Record<string, Certificate>>("pairing") || {};
+            const keys = Object.keys(context);
 
-        for (let i = 0; i < keys.length; i++) {
-            context[keys[i]] = this.decrypt(context[keys[i]])!;
+            for (let i = 0; i < keys.length; i++) {
+                context[keys[i]] = this.decrypt(context[keys[i]])!;
+            }
+
+            this.context = context;
+
+            const processors = this.processors;
+
+            log.info(`pairing loaded: ${processors.length} processor(s) [${processors.join(", ") || "none"}]`);
+        } catch (error) {
+            log.error(
+                `failed to load pairing from ~/.leap/pairing: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            this.context = {};
         }
-
-        this.context = context;
     }
 
     /**
@@ -103,14 +117,19 @@ export class Context {
      */
     private open<T>(filename: string): T | null {
         const directory = path.join(os.homedir(), ".leap");
+        const filePath = path.join(directory, filename);
 
         if (!fs.existsSync(directory)) fs.mkdirSync(directory);
 
-        if (fs.existsSync(path.join(directory, filename))) {
-            const bytes = fs.readFileSync(path.join(directory, filename));
+        if (fs.existsSync(filePath)) {
+            const bytes = fs.readFileSync(filePath);
+
+            log.info(`opened ${filePath} (${bytes.length} bytes)`);
 
             return BSON.deserialize(bytes) as T;
         }
+
+        log.warn(`missing pairing file: ${filePath}`);
 
         return null;
     }

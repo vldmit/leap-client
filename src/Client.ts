@@ -28,6 +28,7 @@ import { ProcessorController } from "./Devices/Processor/ProcessorController";
 import { ProcessorAddress } from "./Response/ProcessorAddress";
 
 import { createDevice, isAddressable, parseDeviceType } from "./Devices/Devices";
+import { probeProcessorMetadata } from "./Connection/MetadataProbe";
 
 const log = getLogger("Client");
 
@@ -48,6 +49,7 @@ export class Client extends EventEmitter<{
 
     private discovery: Discovery;
     private discovered: Map<string, Processor> = new Map();
+    private areaPaths: Map<string, string> = new Map();
 
     /**
      * Creates a location object and starts mDNS discovery.
@@ -66,6 +68,10 @@ export class Client extends EventEmitter<{
         this.context = new Context();
         this.discovery = new Discovery();
         this.refresh = refresh === true;
+
+        log.info(
+            `Client start refresh=${this.refresh} paired=[${this.context.processors.join(", ") || "none"}]`,
+        );
 
         this.discovery.on("Discovered", this.onDiscovered).search();
     }
@@ -104,6 +110,42 @@ export class Client extends EventEmitter<{
     }
 
     /*
+     * Builds "House / Floor / Room" paths for every area href.
+     */
+    private rebuildAreaPaths(areas: AreaAddress[]): void {
+        const byHref = new Map(areas.map((area) => [area.href, area]));
+        this.areaPaths.clear();
+
+        for (const area of areas) {
+            const names: string[] = [];
+            let current: string | undefined = area.href;
+            const seen = new Set<string>();
+
+            while (current != null && !seen.has(current)) {
+                seen.add(current);
+                const node = byHref.get(current);
+
+                if (node == null) break;
+
+                names.unshift(node.Name);
+                current = node.Parent?.href;
+            }
+
+            this.areaPaths.set(area.href, names.join(" / ") || area.Name);
+        }
+    }
+
+    /*
+     * Annotates an area with its full hierarchy path for device constructors.
+     */
+    private withAreaPath(area: AreaAddress): AreaAddress & { Path: string } {
+        return {
+            ...area,
+            Path: this.areaPaths.get(area.href) || area.Name,
+        };
+    }
+
+    /*
      * Discovers all available zones on this processor. In other systems this
      * is the device.
      */
@@ -111,11 +153,13 @@ export class Client extends EventEmitter<{
         return new Promise((resolve) => {
             if (!area.IsLeaf) return resolve();
 
+            const areaWithPath = this.withAreaPath(area);
+
             processor
                 .zones(area)
                 .then((zones) => {
                     for (const zone of zones) {
-                        const device = createDevice(processor, area, zone)
+                        const device = createDevice(processor, areaWithPath, zone)
                             .on("Update", this.onDeviceUpdate)
                             .on("Action", this.onDeviceAction);
 
@@ -149,7 +193,8 @@ export class Client extends EventEmitter<{
                                 AssociatedZones: [],
                                 AssociatedControlStations: [],
                                 AssociatedOccupancyGroups: [],
-                            },
+                                Path: timeclock.Name,
+                            } as AreaAddress & { Path: string },
                             { ...timeclock, ControlType: "Timeclock" },
                         ).on("Update", this.onDeviceUpdate);
 
@@ -169,6 +214,8 @@ export class Client extends EventEmitter<{
         return new Promise((resolve) => {
             if (!area.IsLeaf) return resolve();
 
+            const areaWithPath = this.withAreaPath(area);
+
             processor
                 .controls(area)
                 .then((controls) => {
@@ -182,7 +229,7 @@ export class Client extends EventEmitter<{
                                         ? `/occupancy/${area.href?.split("/")[2]}`
                                         : position.href;
 
-                                const device = createDevice(processor, area, {
+                                const device = createDevice(processor, areaWithPath, {
                                     ...position,
                                     Name: `${area.Name} ${control.Name} ${position.Name}`,
                                 })
@@ -228,9 +275,26 @@ export class Client extends EventEmitter<{
     private onDiscovered = (host: ProcessorAddress): void => {
         this.discovered.delete(host.id);
 
-        if (!this.context.has(host.id)) return;
+        const addrs = (host.addresses || []).map((a) => `${a.family}:${a.address}`).join(", ");
+
+        log.info(`Discovered host id=${host.id} type=${host.type} addresses=[${addrs}]`);
+
+        if (!this.context.has(host.id)) {
+            log.warn(
+                `skipping host id=${host.id}: not in pairing (paired=[${this.context.processors.join(", ") || "none"}])`,
+            );
+            return;
+        }
 
         const ip = host.addresses.find((address) => address.family === HostAddressFamily.IPv4) || host.addresses[0];
+
+        if (ip == null) {
+            log.error(`host id=${host.id} has no addresses`);
+            return;
+        }
+
+        log.info(`connecting to processor id=${host.id} at ${ip.address}`);
+
         const processor = new ProcessorController(host.id, new Connection(ip.address, this.context.get(host.id)));
 
         this.discovered.set(host.id, processor);
@@ -239,9 +303,12 @@ export class Client extends EventEmitter<{
 
         processor
             .on("Disconnect", () => {
+                log.warn(`processor ${host.id} disconnected; retry in ${RETRY_BACKOFF_DURATION}ms`);
                 setTimeout(() => this.onDiscovered(host), RETRY_BACKOFF_DURATION);
             })
             .on("Connect", () => {
+                log.info(`processor ${host.id} Connect event — loading system/project/areas (refresh=${this.refresh})`);
+
                 if (this.refresh) processor.clear();
 
                 // RESET RETRIES
@@ -251,6 +318,12 @@ export class Client extends EventEmitter<{
                         const version = system?.FirmwareImage.Firmware.DisplayName;
                         const type = system?.DeviceType;
                         const waits: Promise<void>[] = [];
+
+                        this.rebuildAreaPaths(areas);
+
+                        log.info(
+                            `processor ${host.id} system loaded firmware=${version || "Unknown"} type=${type} areas=${areas?.length ?? 0}`,
+                        );
 
                         processor.log.info(`Firmware ${Colors.green(version || "Unknown")}`);
                         processor.log.info(project.ProductType);
@@ -263,6 +336,7 @@ export class Client extends EventEmitter<{
                                     if (device != null) device.update(status);
                                 }
                             })
+                            .then(() => log.info(`processor ${host.id} subscribed /zone/status`))
                             .catch((error) => this.onProcessorError(host, error));
 
                         processor
@@ -273,6 +347,7 @@ export class Client extends EventEmitter<{
                                     if (occupancy != null && status.OccupancyStatus != null) occupancy.update(status);
                                 }
                             })
+                            .then(() => log.info(`processor ${host.id} subscribed /area/status`))
                             .catch((error) => this.onProcessorError(host, error));
 
                         if (type === "RadioRa3Processor") {
@@ -289,6 +364,7 @@ export class Client extends EventEmitter<{
                                         }
                                     },
                                 )
+                                .then(() => log.info(`processor ${host.id} subscribed /timeclock/status`))
                                 .catch((error) => this.onProcessorError(host, error));
                         }
 
@@ -314,7 +390,13 @@ export class Client extends EventEmitter<{
                             );
                         }
 
+                        log.info(`processor ${host.id} discovering devices (${waits.length} wait tasks)`);
+
                         Promise.all(waits).then(() => {
+                            const count = [...processor.devices.keys()].length;
+
+                            log.info(`processor ${host.id} discovery complete: ${count} devices; loading statuses`);
+
                             processor.statuses(type).then((statuses) => {
                                 for (const status of statuses) {
                                     const zone = processor.devices.get(((status as ZoneStatus).Zone || {}).href || "");
@@ -329,12 +411,26 @@ export class Client extends EventEmitter<{
                                         occupancy.update(status as AreaStatus);
                                     }
                                 }
+
+                                log.info(`processor ${host.id} applied ${statuses.length} status record(s)`);
+                            }).catch((error) => {
+                                log.error(
+                                    `processor ${host.id} statuses failed: ${error instanceof Error ? error.message : String(error)}`,
+                                );
                             });
 
                             processor.log.info(
-                                `discovered ${Colors.green([...processor.devices.keys()].length.toString())} devices`,
+                                `discovered ${Colors.green(count.toString())} devices`,
                             );
 
+                            // One-shot protocol inventory: area/group hierarchy + extra LEAP URLs.
+                            probeProcessorMetadata(processor, areas).catch((error) => {
+                                log.error(
+                                    `metadata probe failed: ${error instanceof Error ? error.message : String(error)}`,
+                                );
+                            });
+
+                            log.info(`processor ${host.id} emitting Available with ${count} devices`);
                             this.emit("Available", [...processor.devices.values()]);
                         });
                     })
@@ -361,20 +457,19 @@ export class Client extends EventEmitter<{
     };
 
     private onProcessorError = (host: ProcessorAddress, error: Error): void => {
-        if (error.message == null) {
-            log.error(Colors.red(String(error)));
-
-            return;
-        }
+        const message = error?.message != null ? error.message : String(error);
 
         if (
-            error.message.match(/ENOTFOUND|ENETUNREACH|EHOSTUNREACH|ECONNRESET|EPIPE|ECONNREFUSED|ETIMEDOUT/g) != null
+            message.match(/ENOTFOUND|ENETUNREACH|EHOSTUNREACH|ECONNRESET|EPIPE|ECONNREFUSED|ETIMEDOUT/g) != null
         ) {
+            log.warn(
+                `processor ${host.id} network error: ${message}; retry in ${RETRY_BACKOFF_DURATION}ms`,
+            );
             setTimeout(() => this.onDiscovered(host), RETRY_BACKOFF_DURATION);
 
             return;
         }
 
-        log.error(Colors.red(error.message));
+        log.error(Colors.red(`processor ${host.id} error: ${message}`));
     };
 }

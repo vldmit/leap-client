@@ -3,12 +3,15 @@ import path from "path";
 import equals from "deep-equal";
 
 import Cache from "flat-cache";
+import { get as getLogger } from "js-logger";
 
 import { EventEmitter } from "@mkellsy/event-emitter";
 import { MDNSService, MDNSServiceDiscovery, Protocol } from "tinkerhub-mdns";
 import { HostAddress, HostAddressFamily } from "@mkellsy/hap-device";
 
 import { ProcessorAddress } from "../Response/ProcessorAddress";
+
+const log = getLogger("Discovery");
 
 /**
  * Creates and searches the network for devices.
@@ -48,12 +51,19 @@ export class Discovery extends EventEmitter<{
     public search(): void {
         this.stop();
 
+        log.info(`search start: ${this.cached.length} cached host(s)`);
+
         for (let i = 0; i < this.cached.length; i++) {
-            this.emit("Discovered", this.cached[i]);
+            const host = this.cached[i];
+            const addrs = (host.addresses || []).map((a) => a.address).join(",");
+
+            log.info(`emit cached host id=${host.id} type=${host.type} addresses=[${addrs}]`);
+            this.emit("Discovered", host);
         }
 
         this.discovery = new MDNSServiceDiscovery({ type: "lutron", protocol: Protocol.TCP });
         this.discovery.onAvailable(this.onAvailable);
+        log.info("mDNS browse started for _lutron._tcp");
     }
 
     /**
@@ -68,11 +78,30 @@ export class Discovery extends EventEmitter<{
      * emit a discovered event.
      */
     private onAvailable = (service: MDNSService): void => {
-        if (!this.isProcessorService(service)) return;
+        const systype = service.data.get("systype");
 
-        const host = this.parseProcessorAddress(service);
+        if (!this.isProcessorService(service)) {
+            log.debug(`mDNS ignore service id=${service.id} systype=${String(systype)}`);
+            return;
+        }
 
-        if (!this.isProcessorCached(host)) this.emit("Discovered", host);
+        let host: ProcessorAddress;
+
+        try {
+            host = this.parseProcessorAddress(service);
+        } catch (error) {
+            log.error(
+                `mDNS parse failed for service id=${service.id}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+            return;
+        }
+
+        const addrs = (host.addresses || []).map((a) => a.address).join(",");
+        const cached = this.isProcessorCached(host);
+
+        log.info(`mDNS processor id=${host.id} type=${host.type} addresses=[${addrs}] cached=${cached}`);
+
+        if (!cached) this.emit("Discovered", host);
 
         this.cacheProcessor(host);
     };

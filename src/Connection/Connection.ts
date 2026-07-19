@@ -3,6 +3,7 @@ import path from "path";
 import net from "net";
 
 import { BSON } from "bson";
+import { get as getLogger } from "js-logger";
 import { pki } from "node-forge";
 import { v4 } from "uuid";
 
@@ -18,6 +19,8 @@ import { Response } from "../Response/Response";
 import { RequestType } from "../Response/RequestType";
 import { Socket } from "./Socket";
 import { Subscription } from "../Response/Subscription";
+
+const log = getLogger("Connection");
 
 const SOCKET_PORT = 8083;
 const SECURE_SOCKET_PORT = 8081;
@@ -106,8 +109,11 @@ export class Connection extends Parser<{
             this.teardown = false;
             this.socket = undefined;
 
+            const port = this.secure ? SECURE_SOCKET_PORT : SOCKET_PORT;
             const subscriptions = [...this.subscriptions.values()];
-            const socket = new Socket(this.host, this.secure ? SECURE_SOCKET_PORT : SOCKET_PORT, this.certificate);
+            const socket = new Socket(this.host, port, this.certificate);
+
+            log.info(`connect ${this.host}:${port} secure=${this.secure} pendingSubscriptions=${subscriptions.length}`);
 
             socket.on("Data", this.onSocketData);
             socket.on("Error", this.onSocketError);
@@ -116,27 +122,49 @@ export class Connection extends Parser<{
             socket
                 .connect()
                 .then((protocol) => {
-                    this.physicalAccess(this.secure).then(() => {
-                        const waits: Promise<void>[] = [];
+                    log.info(`socket up ${this.host}:${port} protocol=${protocol}; physicalAccess secure=${this.secure}`);
 
-                        this.subscriptions.clear();
-                        this.socket = socket;
+                    this.physicalAccess(this.secure)
+                        .then(() => {
+                            const waits: Promise<void>[] = [];
 
-                        if (this.secure) {
-                            for (const subscription of subscriptions) {
-                                /* istanbul ignore next */
-                                waits.push(this.subscribe(subscription.url, subscription.listener));
+                            this.subscriptions.clear();
+                            this.socket = socket;
+
+                            if (this.secure) {
+                                for (const subscription of subscriptions) {
+                                    /* istanbul ignore next */
+                                    waits.push(this.subscribe(subscription.url, subscription.listener));
+                                }
                             }
-                        }
 
-                        Promise.all(waits).then(() => {
-                            this.emit("Connect", protocol);
+                            Promise.all(waits)
+                                .then(() => {
+                                    log.info(`emit Connect ${this.host} protocol=${protocol}`);
+                                    this.emit("Connect", protocol);
 
-                            resolve();
+                                    resolve();
+                                })
+                                .catch((error) => {
+                                    log.error(
+                                        `resubscribe failed ${this.host}: ${error instanceof Error ? error.message : String(error)}`,
+                                    );
+                                    reject(error);
+                                });
+                        })
+                        .catch((error) => {
+                            log.error(
+                                `physicalAccess failed ${this.host}: ${error instanceof Error ? error.message : String(error)}`,
+                            );
+                            reject(error);
                         });
-                    });
                 })
-                .catch((error) => reject(error));
+                .catch((error) => {
+                    log.error(
+                        `socket connect failed ${this.host}:${port}: ${error instanceof Error ? error.message : String(error)}`,
+                    );
+                    reject(error);
+                });
         });
     }
 
@@ -178,12 +206,30 @@ export class Connection extends Parser<{
                 .then((response) => {
                     const body = response.Body as T;
 
-                    if (body == null) return reject(new Error(`${url} no body`));
-                    if (response.Body instanceof ExceptionDetail) return reject(new Error(response.Body.Message));
+                    if (body == null) {
+                        log.info(`read ${url} -> empty body status=${response.Header?.StatusCode || "?"}`);
+                        return reject(new Error(`${url} no body`));
+                    }
+
+                    if (response.Body instanceof ExceptionDetail) {
+                        log.info(`read ${url} -> exception: ${response.Body.Message}`);
+                        return reject(new Error(response.Body.Message));
+                    }
+
+                    const kind = Array.isArray(body)
+                        ? `array(${(body as unknown[]).length})`
+                        : typeof body === "object"
+                          ? `object(${Object.keys(body as object).slice(0, 12).join(",")})`
+                          : typeof body;
+
+                    log.debug(`read ${url} -> ok ${kind}`);
 
                     return resolve(response.Body as T);
                 })
-                .catch((error) => reject(error));
+                .catch((error) => {
+                    log.info(`read ${url} -> fail: ${error instanceof Error ? error.message : String(error)}`);
+                    reject(error);
+                });
         });
     }
 
