@@ -57,23 +57,34 @@ export class RemoteController extends Common<DeviceState> implements Remote {
 
                         const trigger = new TriggerController(this.processor, button, index, { raiseLower });
 
-                        trigger.on("Press", (button): void => {
-                            this.emit("Action", this, button, "Press");
+                        if (raiseLower) {
+                            // Raw press/release — real finger timing for volume ramp consumers.
+                            trigger.on("Press", (btn): void => {
+                                this.emit("Action", this, btn, "Press");
+                            });
 
-                            setTimeout(() => this.emit("Action", this, button, "Release"), 100);
-                        });
+                            trigger.on("Release", (btn): void => {
+                                this.emit("Action", this, btn, "Release");
+                            });
+                        } else {
+                            trigger.on("Press", (btn): void => {
+                                this.emit("Action", this, btn, "Press");
 
-                        trigger.on("DoublePress", (button): void => {
-                            this.emit("Action", this, button, "DoublePress");
+                                setTimeout(() => this.emit("Action", this, btn, "Release"), 100);
+                            });
 
-                            setTimeout(() => this.emit("Action", this, button, "Release"), 100);
-                        });
+                            trigger.on("DoublePress", (btn): void => {
+                                this.emit("Action", this, btn, "DoublePress");
 
-                        trigger.on("LongPress", (button): void => {
-                            this.emit("Action", this, button, "LongPress");
+                                setTimeout(() => this.emit("Action", this, btn, "Release"), 100);
+                            });
 
-                            setTimeout(() => this.emit("Action", this, button, "Release"), 100);
-                        });
+                            trigger.on("LongPress", (btn): void => {
+                                this.emit("Action", this, btn, "LongPress");
+
+                                setTimeout(() => this.emit("Action", this, btn, "Release"), 100);
+                            });
+                        }
 
                         this.triggers.set(button.href, trigger);
                         this.buttons.push(trigger.definition);

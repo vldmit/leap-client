@@ -5,7 +5,7 @@ import { ButtonStatus } from "../../Response/ButtonStatus";
 
 /**
  * Defines a button tracker. This enables single, double and long presses on
- * remotes.
+ * remotes. Raise/lower buttons emit raw Press/Release only (no classification).
  * @public
  */
 export interface Trigger
@@ -13,6 +13,7 @@ export interface Trigger
         Press: (button: Button) => void;
         DoublePress: (button: Button) => void;
         LongPress: (button: Button) => void;
+        Release: (button: Button) => void;
     }> {
     /**
      * The button id.

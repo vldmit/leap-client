@@ -8,7 +8,8 @@ import { Trigger } from "./Trigger";
 
 /**
  * Defines a button tracker. This enables single, double and long presses on
- * remotes.
+ * remotes. When `raiseLower` is true, LEAP Press/Release are forwarded raw
+ * (no double/long classification) so consumers can implement hold-to-ramp.
  * @public
  */
 export class TriggerController
@@ -16,6 +17,7 @@ export class TriggerController
         Press: (button: Button) => void;
         DoublePress: (button: Button) => void;
         LongPress: (button: Button) => void;
+        Release: (button: Button) => void;
     }>
     implements Trigger
 {
@@ -90,10 +92,24 @@ export class TriggerController
 
     /**
      * Updates the button state and tracks single, double or long presses.
+     * Raise/lower buttons pass through raw Press/Release only.
      *
      * @param status The current button status.
      */
     public update(status: ButtonStatus): void {
+        // Volume raise/lower: faithful finger-down / finger-up for hold-to-ramp.
+        if (this.options.raiseLower === true) {
+            const event = status.ButtonEvent?.EventType;
+
+            if (event === "Press") {
+                this.emit("Press", this.button);
+            } else if (event === "Release") {
+                this.emit("Release", this.button);
+            }
+
+            return;
+        }
+
         const longPressTimeoutHandler = () => {
             this.reset();
 

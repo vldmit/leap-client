@@ -84,27 +84,6 @@ describe("Trigger", () => {
             }, 10);
         });
 
-        it("should add double press time for raise and lower", (done) => {
-            trigger = new TriggerController(processor, button, index, {
-                doubleClickSpeed: 15,
-                raiseLower: true,
-            });
-
-            trigger.on("DoublePress", (response) => {
-                expect(response.id).to.equal("LEAP-TEST-ID-BUTTON-TEST-TRIGGER");
-
-                done();
-            });
-
-            trigger.update({ ButtonEvent: { EventType: "Press" } } as any);
-            trigger.update({ ButtonEvent: { EventType: "Release" } } as any);
-
-            setTimeout(() => {
-                trigger.update({ ButtonEvent: { EventType: "Press" } } as any);
-                trigger.update({ ButtonEvent: { EventType: "Release" } } as any);
-            }, 10);
-        });
-
         it("should reset the trigger state if button is pressed during a double press", () => {
             trigger = new TriggerController(processor, button, index, { doubleClickSpeed: 15 });
 
@@ -140,6 +119,78 @@ describe("Trigger", () => {
             trigger.update({ ButtonEvent: { EventType: "Release" } } as any);
             trigger.update({ ButtonEvent: { EventType: "press" } } as any);
             trigger.update({ ButtonEvent: { EventType: "Release" } } as any);
+        });
+
+        describe("raiseLower raw mode", () => {
+            it("should emit Press immediately on LEAP Press", (done) => {
+                trigger = new TriggerController(processor, button, index, { raiseLower: true });
+
+                trigger.on("Press", (response) => {
+                    expect(response.id).to.equal("LEAP-TEST-ID-BUTTON-TEST-TRIGGER");
+                    done();
+                });
+
+                trigger.update({ ButtonEvent: { EventType: "Press" } } as any);
+            });
+
+            it("should emit Release on LEAP Release (real finger-up)", (done) => {
+                trigger = new TriggerController(processor, button, index, { raiseLower: true });
+                const events: string[] = [];
+
+                trigger.on("Press", () => events.push("Press"));
+                trigger.on("Release", () => {
+                    events.push("Release");
+                    expect(events).to.deep.equal(["Press", "Release"]);
+                    done();
+                });
+                trigger.on("LongPress", () => events.push("LongPress"));
+                trigger.on("DoublePress", () => events.push("DoublePress"));
+
+                trigger.update({ ButtonEvent: { EventType: "Press" } } as any);
+                trigger.update({ ButtonEvent: { EventType: "Release" } } as any);
+            });
+
+            it("should not classify LongPress while held", (done) => {
+                trigger = new TriggerController(processor, button, index, {
+                    raiseLower: true,
+                    clickSpeed: 10,
+                });
+                const events: string[] = [];
+
+                trigger.on("Press", () => events.push("Press"));
+                trigger.on("Release", () => events.push("Release"));
+                trigger.on("LongPress", () => events.push("LongPress"));
+
+                trigger.update({ ButtonEvent: { EventType: "Press" } } as any);
+
+                setTimeout(() => {
+                    trigger.update({ ButtonEvent: { EventType: "Release" } } as any);
+                    expect(events).to.deep.equal(["Press", "Release"]);
+                    done();
+                }, 50);
+            });
+
+            it("should not emit DoublePress on rapid clicks", (done) => {
+                trigger = new TriggerController(processor, button, index, {
+                    raiseLower: true,
+                    doubleClickSpeed: 50,
+                });
+                const events: string[] = [];
+
+                trigger.on("Press", () => events.push("Press"));
+                trigger.on("Release", () => events.push("Release"));
+                trigger.on("DoublePress", () => events.push("DoublePress"));
+
+                trigger.update({ ButtonEvent: { EventType: "Press" } } as any);
+                trigger.update({ ButtonEvent: { EventType: "Release" } } as any);
+                trigger.update({ ButtonEvent: { EventType: "Press" } } as any);
+                trigger.update({ ButtonEvent: { EventType: "Release" } } as any);
+
+                setTimeout(() => {
+                    expect(events).to.deep.equal(["Press", "Release", "Press", "Release"]);
+                    done();
+                }, 20);
+            });
         });
     });
 });
