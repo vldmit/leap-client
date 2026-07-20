@@ -6,6 +6,7 @@ on:
     push:
         tags:
             - "v*"
+    workflow_dispatch:
 
 jobs:
     publish-npm:
@@ -17,14 +18,15 @@ jobs:
                   node-version: 20
                   registry-url: https://registry.npmjs.org/
             - run: npm ci
-            - run: npm run generate
+            - name: Generate authority (when secrets available)
+              continue-on-error: true
               env:
-                  AUTH_CA: ${{secrets.AUTH_CA}}
-                  AUTH_KEY: ${{secrets.AUTH_KEY}}
-                  AUTH_CERT: ${{secrets.AUTH_CERT}}
+                  AUTH_CA: ${{ secrets.AUTH_CA }}
+                  AUTH_KEY: ${{ secrets.AUTH_KEY }}
+                  AUTH_CERT: ${{ secrets.AUTH_CERT }}
+              run: npm run generate
+            - name: Ensure authority exists
+              run: test -f authority || (echo "missing authority file" && exit 1)
             - run: npm publish --access public
               env:
-                  NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
-                  AUTH_CA: ${{secrets.AUTH_CA}}
-                  AUTH_KEY: ${{secrets.AUTH_KEY}}
-                  AUTH_CERT: ${{secrets.AUTH_CERT}}
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
